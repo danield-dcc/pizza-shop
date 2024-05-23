@@ -25,7 +25,7 @@ import { Textarea } from './ui/textarea'
 
 const storeProfileSchema = z.object({
   name: z.string().min(1),
-  description: z.string(),
+  description: z.string().nullable(),
 })
 
 type StoreProfileSchema = z.infer<typeof storeProfileSchema>
@@ -55,23 +55,43 @@ export function StoreProfileDialog() {
     },
   })
 
+  function updateManagedRestauranteCache({
+    name,
+    description,
+  }: StoreProfileSchema) {
+    const cached = queryClient.getQueryData<GetManagedRestaurantResponse>([
+      'managed-restaurant',
+    ])
+
+    if (cached) {
+      queryClient.setQueryData<GetManagedRestaurantResponse>(
+        ['managed-restaurant'],
+        {
+          ...cached,
+          name,
+          description,
+        },
+      )
+    }
+
+    return { cached }
+  }
+
   // onSuccess para atualizar os dados na tela("refetch") - update cache
   const { mutateAsync: updateProfileFn } = useMutation({
     mutationFn: updateProfile,
-    onSuccess(_, { name, description }) {
-      const cached = queryClient.getQueryData<GetManagedRestaurantResponse>([
-        'managed-restaurant',
-      ])
+    // onSuccess(_, { name, description }) {},  -> onSuccess, a atualização só o ocorre quando a request retorna como sucesso, como o onMutate não, ela dispara automaticamente
+    onMutate({ name, description }) {
+      const { cached } = updateManagedRestauranteCache({ name, description })
 
-      if (cached) {
-        queryClient.setQueryData<GetManagedRestaurantResponse>(
-          ['managed-restaurant'],
-          {
-            ...cached,
-            name,
-            description,
-          },
-        )
+      return { previousProfile: cached }
+    },
+
+    onError(error, variables, context) {
+      console.log({ error, variables })
+
+      if (context?.previousProfile) {
+        updateManagedRestauranteCache(context.previousProfile)
       }
     },
   })
@@ -86,7 +106,7 @@ export function StoreProfileDialog() {
       toast.success('Perfil atualizado com sucesso!')
     } catch (error) {
       console.log(error)
-      toast.success('Falha ao atualizar o perfil, tente novamente!')
+      toast.error('Falha ao atualizar o perfil, tente novamente!')
     }
   }
 
